@@ -1,0 +1,158 @@
+/*----------------------------------------------------------------------------
+
+        Simulation of hyperpolarization-activated graded persistent
+        activity in prefrontal cortex
+
+        Reference: Winograd M, Destexhe A, Sanchez-Vives, MV.
+        Hyperpolarization-activated graded persistent activity in 
+        the prefrontal cortex.  Proc. Natl. Acad. Sci. USA
+        105: 7298-7303, 2008.
+
+        Intrinsic currents: INa, IKd for action potentials, IM for
+        spike-frequency adaptation, ICaL for calcium currents, 
+        calcium dynamics and the hyperpolarization-activated current
+        Ih.  There is also a calcium regulation of Ih, which was 
+        taken from thalamic neurons (Destexhe et al., J Neurophysiol.,
+        1996)
+
+        "non-saturating" model (Fig 4 of the paper)
+
+----------------------------------------------------------------------------*/
+
+
+
+//----------------------------------------------------------------------------
+//  load and define general graphical procedures
+//----------------------------------------------------------------------------
+
+load_file("nrngui.hoc")
+
+objectvar g[20]			// max 20 graphs
+ngraph = 0
+
+proc addgraph() { local ii	// define subroutine to add a new graph
+				// addgraph("variable", minvalue, maxvalue)
+	ngraph = ngraph+1
+	ii = ngraph-1
+	g[ii] = new Graph()
+	g[ii].size(0,tstop,$2,$3)
+	g[ii].xaxis()
+	g[ii].yaxis()
+	g[ii].addvar($s1,1,0)
+	g[ii].save_name("graphList[0].")
+	graphList[0].append(g[ii])
+}
+
+nrnmainmenu()			// create main menu
+nrncontrolmenu()		// crate control menu
+
+
+//----------------------------------------------------------------------------
+//  general parameters
+//----------------------------------------------------------------------------
+
+dt=0.1
+tstop = 66000
+runStopAt = tstop
+steps_per_ms = 5
+celsius = 36
+v_init = -70
+
+
+//----------------------------------------------------------------------------
+//  create compartments and insert currents
+//----------------------------------------------------------------------------
+
+create soma 
+access soma
+
+soma {		// neuron settings
+ nseg = 1
+ diam = 18.8 
+ L = 18.8 
+ Ra = 123.0 
+}
+
+soma {		// passive properties
+ insert ppasi
+ g_ppasi = 0.001
+ e_ppasi = -70
+}
+
+soma {		// active properties
+ insert hh3	// INa and IKd
+ gnabar_hh3=0.07
+ gkbar_hh3=0.007
+
+ insert im	// IKM
+ gkbar_im = 4e-6
+ taumax_im = 4000		// adaptation decay time cst of 622 ms 
+
+ insert iL	// ICaL
+ pca_IL = 2.76e-4
+
+ insert cada	// calcium dynamics
+ taur_cada = 20
+ depth_cada = 1
+
+ insert iar	// Ih current
+ ghbar_iar=0.00002
+ cac_iar = 0.006
+
+// values for the "non-saturating" model
+ k2_iar = 1e-5	// slower decay of P1 compared to thalamic model
+ k4_iar = 0.001	// -> decay time cst of 875 ms (same as thalamic model)
+
+// values for the "saturating" model (faster upregulation kinetics)
+// k2_iar = 1e-4
+// k4_iar = 0.008
+}
+
+
+objref APC		// insert AP counter + calculate firing rate
+APC = new APCounter2(0.5)
+soma APC.loc(0.5)
+
+eh=-20
+
+
+//----------------------------------------------------------------------------
+//  insert periodic current pulse generator
+//----------------------------------------------------------------------------
+
+objref curr
+curr = new Ipulse3()
+soma curr.loc(0.5)
+
+curr.del = 10000	// delay before starting first pulse
+curr.dur = 4000		// duration of pulse
+curr.per = curr.del + curr.dur	// total period between pulses
+curr.num = 100		// nb of pulses
+
+for i=0,curr.num-1 {
+  curr.amp[i] = -0.3  	// amplitude of the pulses
+}
+
+curr.dc = 0.232		// dc current
+
+
+
+
+//----------------------------------------------------------------------------
+//  add graphs
+//----------------------------------------------------------------------------
+
+addgraph("soma.v(0.5)",-80,20)		// membrane potential
+
+addgraph("curr.i",-0.3,0.3)		// current
+
+addgraph("soma.m_iar(0.5)",0,2)		// activation of Ih
+//addgraph("soma.o1_iar(0.5)",0,1)	// v-dep open state
+//addgraph("soma.o2_iar(0.5)",0,1)	// ca-bound open state
+addgraph("soma.p1_iar(0.5)",0,0.1)	// ca-bound 2nd messenger
+
+addgraph("soma.cai(0.5)",0,0.01)	// calcium
+//addgraph("soma.ica(0.5)",-0.1,0)	// calcium current
+
+addgraph("APC.rate",0,50)		// instantaneous firing rate
+
